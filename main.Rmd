@@ -1,0 +1,355 @@
+---
+title: "應用統計 R 程式 期末報告"
+author: "Alex Chiang "
+date: "`r Sys.Date()`"
+
+output: 
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+    gallery: false
+    highlight: tango
+    code_folding: hide
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+<style type="text/css">
+body{ 
+  font-size: 16px; 
+  } 
+  
+h1 { 
+  font-size: 30px;
+  color: navy;
+  } 
+  
+h2 { 
+  font-size: 26px;
+  color: maroon;
+  } 
+  
+h3 { 
+  font-size: 22px;
+  color: brown;
+  }
+  
+code.r {
+  font-size: 16px;
+  }
+  
+pre {
+  font-size: 14px
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+製作人：江祐宏 Alex Chiang
+
+課程名稱：應用統計（R 程式語言）
+
+課程時間：2021 Spring
+
+指導老師：張揖平教授
+
+
+
+## 報告概述
+
+### 製作大綱
+
+
+使用 Python 以及 R 程式語言，進行**財經、商業熱門消息分析**。
+
+首先，使用 Google news 所提供的開源 api，抓取台灣近期熱門的商業新聞，整理該資訊後繪製成**文字雲**。接著使用**Google Trend**進一步分析，文字雲中出現的三個關鍵名詞，在今年以來的熱度變化。最後，觀察文字雲中出現過的關鍵公司，查看它今年以來的**股價走勢**。
+
+
+
+### 涵蓋主題
+1. 文字雲
+2. Google Trends
+3. 動態股價圖
+
+
+### 加分項目
+以下為課堂外的程式操作，供老師參考，作為報告加分項目：
+
+1. 在 R markdown 操作 Python，並連接到 Anaconda Base 環境
+2. 使用 Google news API 抓取熱門商業新聞的資料
+3. 繪製文字雲之前，刪除字串中標點符號
+4. 將「繪製股價圖」的動作封包成函式，方便使用
+5. 將 html 檔匯出至 GitHub Pages
+
+
+
+
+## Python 環境設置
+
+由於 Google news API 不支援 R 程式語言，因此我必須同時在 Rmd 操作 Python。
+
+#### 步驟：
+
+1. 使用 `engine.path` 設置 Python 執行環境
+2. 安裝 `reticulate` 套件連接 R 與 Python 的變數
+3. 用 `py$[Python變數名稱]` 在 R 中讀取 Python 的變數
+
+* [參考資料](https://bookdown.org/yihui/rmarkdown-cookbook/eng-python.html)
+
+```{r}
+library(reticulate)
+```
+
+
+---
+
+## 主題一：文字雲
+
+### 抓取新聞資料
+
+使用 Python 讀取 Google news API，並做簡單的格式整理
+
+> 註：點擊底下參考資料一，即可申辦 API 金鑰
+
+* [參考資料1](https://newsapi.org/s/taiwan-business-news-api)
+* [參考資料2](https://medium.com/ccclub/ccclub-python-for-beginners-tutorial-533b8d8d96f3)
+
+
+```{python engine.path="/Users/alex_chiang/opt/anaconda3/bin/python3"}
+
+### Google news API ###
+
+#因為 Google news API 不支援 R 語言，因此我用 python 先讀取新聞資料 
+# 參考資料：
+# https://newsapi.org/s/taiwan-business-news-api
+# https://medium.com/ccclub/ccclub-python-for-beginners-tutorial-533b8d8d96f3
+
+import requests
+api_key = 'use your api key'
+url = ('https://newsapi.org/v2/top-headlines?'
+       'country=tw&category=business&'
+       'apiKey=' + api_key)
+
+# 回傳結果
+response = requests.get(url)
+articles = response.json()['articles']
+
+# 合併新聞內容
+contents = ''
+for i in articles:
+    if type(i['description']) == str:
+        contents += i['description']
+        
+# 去除標點符號
+punctuation = "＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､\u3000、〃〈〉《》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰()｜|–—‘’‛“”„‟…‧﹏﹑﹔·！？｡。"
+
+for i in punctuation:
+    contents = contents.replace(i, ' ')
+```
+
+
+
+
+### 繪製文字雲
+
+#### 步驟一：分詞－知道是一個中文的詞
+#### 步驟二：統計詞語出現的次數
+#### 步驟三：刪掉頻率太少的詞
+#### 步驟四：使用文字雲套件繪圖
+
+整理完近期熱門商業新聞的「新聞內容」後，初步繪製出文字雲
+
+```{r}
+contents = py$contents
+
+library(jiebaR) # 中文分詞套件
+library(wordcloud2) # 文字雲套件
+
+# 中文分詞
+jiebaR_worker = jiebaR::worker()
+title_segment = jiebaR_worker[contents]
+
+# 利用 table() 做次數分配表
+title_table = table(title_segment)
+title_table = data.frame(title_table)
+
+# 出現次數排序
+title_order_table = title_table[order(title_table$Freq, decreasing=TRUE),]
+
+# 計算詞的字數
+title_nchar = nchar(as.character(title_order_table$title_segment))
+
+# 刪除『字數』等於 1 的詞
+title_order_table = title_order_table[title_nchar > 1,]
+
+# 只保留出現『頻率』 >= 2 的詞
+title_order_table = title_order_table[title_order_table$Freq >= 2,]
+
+# 繪製文字雲
+cloud1 = wordcloud2::wordcloud2(title_order_table)
+cloud1
+```
+
+
+-
+
+過濾掉不重要的字句，再畫一次文字雲
+
+```{r}
+
+# 停用詞過濾函數：filter_segment
+filter = c('1.8', '18', 'KY')
+title_segment2 = jiebaR::filter_segment(title_segment, filter)
+
+# 利用 table() 做次數分配表
+title_table2 = table(title_segment2)
+title_table2 = data.frame(title_table2)
+
+# 出現次數排序
+title_order_table2 = title_table2[order(title_table2$Freq, decreasing=TRUE),]
+
+# 計算詞的字數
+title_nchar2 = nchar(as.character(title_order_table2$title_segment2))
+
+# 刪除『字數』等於 1 的詞
+title_order_table2 = title_order_table2[title_nchar2 > 1,]
+
+# 只保留出現『頻率』 >= 2 的詞
+title_order_table2 = title_order_table2[title_order_table2$Freq >= 2,]
+
+# 繪製文字雲
+cloud2 = wordcloud2::wordcloud2(title_order_table2)
+cloud2
+```
+
+-
+
+觀察上方兩張文字雲，第二張會將第一張出現的不重要字詞給隱藏
+
+---
+
+## 主題二：Google Trends 趨勢分析
+
+在 R 中使用 `gtrendsR` 套件，即可操作 Google Trends。以下將會以「文字雲出現過多次的三個關鍵名詞」作為搜尋範例
+
+* [Google Trend 官方網站](https://trends.google.com.tw/trends/?geo=TW)
+
+```{r}
+# Google Trends 搜尋熱度的趨勢變化
+library(gtrendsR)
+
+# 查詢關鍵字
+keyword = c("繳稅", "航運", "比特")
+
+# 查詢國家
+geo = "TW"
+
+# 查詢範圍：web, news, images, froogle, youtube
+gprop = "news"
+
+# 查詢時間
+start_date = "2021-01-01"
+end_date = "2021-06-18"
+time = paste(start_date, end_date)
+
+# 只回傳時間序列資料
+onlyInterest = FALSE
+
+# 開始查詢
+trends = gtrendsR::gtrends(keyword=keyword, 
+                           geo=geo, 
+                           gprop=gprop,
+                           time=time,
+                           onlyInterest=onlyInterest)
+
+# 查詢結果
+interest_over_time = trends$interest_over_time
+
+# 調整資料格式
+interest_over_time$hits[interest_over_time$hits == "<1"] = 0
+interest_over_time$hits = as.numeric(interest_over_time$hits)
+
+# 繪製折線圖
+library(dygraphs)
+library(xts)
+data = data.frame(time=interest_over_time$date, 
+                  hits=interest_over_time$hits,
+                  keyword=interest_over_time$keyword)
+
+data_df = reshape2::dcast(data, time ~ keyword, value.var="hits")
+data_xts = xts(x=data_df, order.by=data_df$time)
+data_xts$time = NULL
+fig_dygraph = dygraphs::dygraph(data_xts) %>% 
+  dySeries(keyword[1], color="blue") %>% 
+  dySeries(keyword[2], color="red") %>% 
+  dySeries(keyword[3], color="green") %>% 
+  dyRangeSelector(height=20)
+fig_dygraph
+```
+
+-
+
+統整查詢結果，換成精緻的「表格」形式呈現
+
+```{r}
+# 統整查詢結果
+data_df = reshape2::dcast(interest_over_time, 
+                          date ~ keyword,
+                          value.var="hits")
+
+# 繪製好看表格
+DT::datatable(data_df)
+```
+
+
+---
+
+## 主題三：繪製動態股價圖
+
+觀察主題一的「文字雲」發現，出現過「航運」關鍵字，因此試著繪製今年以來「長榮」的股價走勢圖。
+
+```{r}
+# 繪製股價圖
+library(plotly)
+library(quantmod)
+
+# 包裝成函式，方便使用
+candlestick = function(ticker, start = "2021-01-01", 
+                       end = "2021-06-18"){
+  # 讀取股價資料
+  Asset = getSymbols(ticker, from=start, to=end, auto.assign=FALSE)
+  df = data.frame(Date=index(Asset), coredata(Asset))
+
+  # 畫圖
+  fig = df %>%
+    plot_ly(x=~Date, 
+            type="candlestick",
+            open=~df[,2], 
+            close=~df[,5],
+            high=~df[,3], 
+            low=~df[,4]) %>% 
+    layout(title= paste("Candlestick Chart", ticker))
+  fig
+  }
+
+candlestick(ticker = "2603.TW")
+```
+
+---
+
+## 結論
+
+經過這一學期的課程，讓我更熟悉了 R 程式語言的操作，並用了三個主題製作了這份簡單的小報告，期待未來能夠利用 R 在於繪圖工具以及統計分析的優勢，做出更精彩、更完整的專案或作品。
+
+作者：江祐宏 Alex Chaing
+
+製作日期：2021/6/18
